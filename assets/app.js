@@ -36,8 +36,8 @@
     if (empty) empty.hidden = count !== 0;
     if (reset) reset.hidden = !query && range === 'all';
     if (status) {
-      const availability = metadataState === 'loading' ? '年代资料加载中；可先按卷号筛选。' : metadataState === 'failed' ? '年代资料暂不可用；仍可按卷号筛选、打开原文阅读。' : '可按卷号、帝王或年号筛选目录。';
-      status.textContent = `显示 ${count} / ${cards.length} 卷。${availability}`;
+      const availability = metadataState === 'loading' ? ' · 年代加载中' : metadataState === 'failed' ? ' · 年代暂不可用，可按卷号查找' : '';
+      status.textContent = `${count} / ${cards.length} 卷${availability}`;
     }
   }
 
