@@ -15,6 +15,7 @@
 
   const validId = (id) => id === 'full' || /^\d{3}$/.test(id) && Number(id) >= 1 && Number(id) <= 220;
   const sourceFor = (id) => id === 'full' ? 'txt/新续资治通鉴.txt' : `txt/volumes/${id}.txt`;
+  const staticPageFor = (id) => `read/${id}.html`;
   const documentName = (id) => id === 'full' ? '全书重编本' : `卷 ${id}`;
 
   function filterCatalog() {
@@ -61,6 +62,7 @@
   const errorBox = byId('reader-error');
   const errorMessage = byId('reader-error-message');
   const source = byId('reader-source');
+  const permalink = byId('reader-permalink');
   const outline = byId('reader-outline');
   const progress = byId('reader-progress');
   const percent = byId('reader-percent');
@@ -119,7 +121,7 @@
     continueLink.hidden = !saved.id;
     if (!saved.id) return;
     continueLink.dataset.read = saved.id;
-    continueLink.href = sourceFor(saved.id);
+    continueLink.href = staticPageFor(saved.id);
     const item = metadata.get(saved.id);
     continueLink.textContent = `继续阅读 · ${documentName(saved.id)}${item ? ` · ${item.title}` : ''}（${Math.round(saved.fraction * 100)}%）`;
   }
@@ -224,6 +226,7 @@
       ? '110 卷重编本 · 全书连续阅读，与 220 卷分卷文本的卷界不同'
       : `220 卷分卷文本 · ${item ? `${item.title} · ${item.period}` : '原分卷边界'}`;
     if (source) source.href = sourceFor(currentId);
+    if (permalink) permalink.href = staticPageFor(currentId);
     if (previous) previous.disabled = currentId === 'full' || Number(currentId) <= 1;
     if (next) next.disabled = currentId === 'full' || Number(currentId) >= 220;
   }

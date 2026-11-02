@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="cover-title cover-description">
+  <title id="cover-title">新续资治通鉴 · 110 卷重编本</title>
+  <desc id="cover-description">清·毕沅 原著 / 季善凯 重编。宋 · 辽 · 金 · 元。在线阅读 · TXT / PDF。米色纸面、墨绿色书册与朱红印章。</desc>
+  <rect width="1200" height="630" fill="#f6f5ef"/>
+  <rect x="32" y="32" width="1136" height="566" rx="2" fill="none" stroke="#dddfd3" stroke-width="2"/>
+  <path d="M84 92H716M84 486H716" fill="none" stroke="#dddfd3" stroke-width="2"/>
+  <path d="M84 92H148" fill="none" stroke="#a75440" stroke-width="4"/>
+  <g font-family="'Songti SC', 'STSong', 'Noto Serif CJK SC', 'SimSun', serif" fill="#263b32">
+    <text x="84" y="156" font-size="30" letter-spacing="6">宋 · 辽 · 金 · 元</text>
+    <text x="80" y="280" font-size="88" font-weight="600" letter-spacing="4">新续资治通鉴</text>
+    <text x="86" y="342" font-size="28">清·毕沅 原著 / 季善凯 重编</text>
+  </g>
+  <rect x="84" y="391" width="276" height="57" rx="2" fill="#344f40"/>
+  <text x="222" y="429" text-anchor="middle" font-family="'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="29" fill="#fffefa">110 卷重编本</text>
+  <text x="84" y="544" font-family="'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="29" letter-spacing="2" fill="#344f40">在线阅读 · TXT / PDF</text>
+  <g aria-hidden="true">
+    <circle cx="947" cy="307" r="192" fill="#e9eddf"/>
+    <circle cx="947" cy="307" r="207" fill="none" stroke="#dddfd3"/>
+    <path d="M812 141H1073V506H812Z" fill="#dedbca"/>
+    <path d="M820 153H1082V514H820Z" fill="#fffefa" stroke="#c8cbbc" stroke-width="2"/>
+    <path d="M824 497H1074M824 503H1074M824 509H1074" fill="none" stroke="#dddfd3" stroke-width="2"/>
+    <rect x="800" y="124" width="270" height="370" rx="2" fill="#344f40"/>
+    <rect x="800" y="124" width="20" height="370" fill="#263b32"/>
+    <path d="M837 146H1049V472H837ZM843 152H1043V466H843Z" fill="none" stroke="#b7b996"/>
+    <path d="M854 172H885" fill="none" stroke="#b7b996" stroke-width="2"/>
+    <g font-family="'Songti SC', 'STSong', 'Noto Serif CJK SC', 'SimSun', serif" fill="#f2efdf" font-size="41" text-anchor="middle">
+      <text x="997" y="205">新</text>
+      <text x="997" y="250">续</text>
+      <text x="997" y="295">资</text>
+      <text x="997" y="340">治</text>
+      <text x="997" y="385">通</text>
+      <text x="997" y="430">鉴</text>
+    </g>
+    <rect x="857" y="382" width="60" height="60" fill="#a75440"/>
+    <rect x="862" y="387" width="50" height="50" fill="none" stroke="#f2dfc9"/>
+    <text x="887" y="422" text-anchor="middle" font-family="'Songti SC', 'STSong', 'Noto Serif CJK SC', 'SimSun', serif" font-size="29" fill="#fff1dc">史</text>
+  </g>
+</svg>
