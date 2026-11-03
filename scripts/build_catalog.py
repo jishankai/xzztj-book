@@ -108,7 +108,8 @@ def main():
         with path.open("w", encoding="utf-8", newline="") as stream:
             stream.write(content)
     print(f"Wrote {len(rows)} volumes to {destination}")
-    print("Wrote 441 static reading pages, homepage catalog, and sitemap (442 URLs)")
+    pages = sum(path.suffix == '.html' and path.name != 'index.html' for path in outputs)
+    print(f"Wrote {pages} static reading pages, homepage catalog, and sitemap ({pages + 1} URLs)")
     for index in (0, 109, 186, 219):
         print(json.dumps(rows[index], ensure_ascii=False))
 

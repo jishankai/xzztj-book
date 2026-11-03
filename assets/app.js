@@ -14,12 +14,17 @@
   let range = 'all';
 
   const isOriginal = (id) => typeof id === 'string' && id.startsWith('raw/');
-  const volumeNumber = (id) => Number(isOriginal(id) ? id.slice(4) : id);
-  const validId = (id) => id === 'full' || /^(?:raw\/)?\d{3}$/.test(id) && volumeNumber(id) >= 1 && volumeNumber(id) <= 220;
-  const sourceFor = (id) => isOriginal(id) ? metadata.get(id)?.source : id === 'full' ? 'txt/新续资治通鉴.txt' : `txt/volumes/${id}.txt`;
-  const staticPageFor = (id) => `read/${id}.html`;
-  const documentName = (id) => id === 'full' ? '新编版 · 全书重编本' : `${isOriginal(id) ? '原版' : '新编版'} · 卷 ${isOriginal(id) ? id.slice(4) : id}`;
-  const otherEdition = (id) => isOriginal(id) ? id.slice(4) : `raw/${id === 'full' ? '001' : id}`;
+  const isVernacular = (id) => typeof id === 'string' && id.startsWith('vernacular/');
+  const volumeId = (id) => id.split('/').pop();
+  const volumeNumber = (id) => Number(volumeId(id));
+  const validId = (id) => typeof id === 'string' && (id === 'full' || /^(?:(?:raw|vernacular)\/)?\d{3}$/.test(id) && volumeNumber(id) >= 1 && volumeNumber(id) <= 220);
+  const translations = new Set();
+  let translationState = 'loading';
+  const itemFor = (id) => metadata.get(isVernacular(id) ? volumeId(id) : id);
+  const sourceFor = (id) => isOriginal(id) ? metadata.get(id)?.source : isVernacular(id) ? `txt/vernacular/${volumeId(id)}.txt` : id === 'full' ? 'txt/新续资治通鉴.txt' : `txt/volumes/${id}.txt`;
+  const staticPageFor = (id) => `read/${isVernacular(id) && translationState === 'ready' && !translations.has(volumeId(id)) ? volumeId(id) : id}.html`;
+  const documentName = (id) => id === 'full' ? '新编版 · 全书重编本' : `${isOriginal(id) ? '原版' : isVernacular(id) ? '白话译文' : '新编版 · 文言'} · 卷 ${volumeId(id)}`;
+  const otherEdition = (id) => isOriginal(id) ? volumeId(id) : `raw/${id === 'full' ? '001' : volumeId(id)}`;
 
   function filterCatalog() {
     const query = search ? search.value.trim().toLocaleLowerCase() : '';
@@ -67,7 +72,8 @@
   const source = byId('reader-source');
   const permalink = byId('reader-permalink');
   const editionSwitch = byId('reader-edition-switch');
-  const outline = byId('reader-outline');
+  const languageSwitch = byId('reader-language-switch');
+  const languageStatus = byId('reader-language-status');
   const progress = byId('reader-progress');
   const percent = byId('reader-percent');
   const find = byId('reader-find');
@@ -134,7 +140,7 @@
     if (!saved.id) return;
     continueLink.dataset.read = saved.id;
     continueLink.href = staticPageFor(saved.id);
-    const item = metadata.get(saved.id);
+    const item = itemFor(saved.id);
     continueLink.textContent = `继续阅读 · ${documentName(saved.id)}${item ? ` · ${item.title}` : ''}（${Math.round(saved.fraction * 100)}%）`;
   }
 
@@ -186,7 +192,10 @@
     if (decrease) decrease.disabled = saved.fontSize <= 16;
     if (increase) increase.disabled = saved.fontSize >= 28;
     if (themeToggle) {
-      themeToggle.textContent = saved.theme === 'dark' ? '切换纸色' : '切换夜读';
+      themeToggle.firstElementChild.textContent = saved.theme === 'dark' ? '☀' : '☾';
+      const label = saved.theme === 'dark' ? '切换纸色模式' : '切换夜间模式';
+      themeToggle.setAttribute('aria-label', label);
+      themeToggle.title = label;
       themeToggle.setAttribute('aria-pressed', String(saved.theme === 'dark'));
     }
   }
@@ -238,6 +247,21 @@
   }
   loadCatalog();
   const rawCatalogReady = loadCatalog(true);
+  async function loadTranslations() {
+    try {
+      const response = await fetch('assets/vernacular.json');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const ids = await response.json();
+      if (!Array.isArray(ids) || !ids.every((id) => /^\d{3}$/.test(id) && validId(id))) throw new Error('译文目录格式错误');
+      for (const id of ids) translations.add(id);
+      translationState = 'ready';
+    } catch (error) {
+      translationState = 'failed';
+    }
+    updateContinue();
+    if (currentId) updateReaderLabels();
+  }
+  const translationsReady = loadTranslations();
 
   if (!canRead) return;
 
@@ -261,13 +285,13 @@
   }
 
   function updateReaderLabels() {
-    const item = metadata.get(currentId);
+    const item = itemFor(currentId);
     if (title) title.textContent = documentName(currentId);
     if (subtitle) subtitle.textContent = currentId === 'full'
       ? '110 卷新编本 · 全书连续阅读，与原版 220 卷的卷号不一一对应'
-      : `${isOriginal(currentId) ? '毕沅原版' : '季善凯新编版'} · ${item ? `${item.title} · ${item.period}` : '220 卷'}`;
+      : `${isOriginal(currentId) ? '毕沅原版' : isVernacular(currentId) ? '据新编分卷 AI 辅助翻译 · 待人工校对' : '季善凯新编版'} · ${item ? `${item.title} · ${item.period}` : '220 卷'}`;
     if (source) {
-      const url = sourceFor(currentId);
+      const url = isVernacular(currentId) && translationState === 'ready' && !translations.has(volumeId(currentId)) ? `txt/volumes/${volumeId(currentId)}.txt` : sourceFor(currentId);
       source.hidden = !url;
       if (url) source.href = url;
     }
@@ -280,8 +304,32 @@
       editionSwitch.setAttribute('aria-label', label);
       editionSwitch.title = label;
     }
+    if (languageSwitch) {
+      const available = currentId !== 'full' && (isVernacular(currentId) || translations.has(volumeId(currentId)));
+      languageSwitch.hidden = !available;
+      if (available) {
+        const target = isVernacular(currentId) ? volumeId(currentId) : `vernacular/${volumeId(currentId)}`;
+        languageSwitch.dataset.read = target;
+        languageSwitch.href = staticPageFor(target);
+        const label = isVernacular(currentId) ? '切换到文言原文' : isOriginal(currentId) ? '切换到白话文（据新编分卷，非原版全文译文）' : '切换到白话文';
+        languageSwitch.setAttribute('aria-label', label);
+        languageSwitch.title = label;
+      }
+    }
+    if (languageStatus) {
+      languageStatus.hidden = currentId === 'full' || isVernacular(currentId) || translations.has(volumeId(currentId));
+      languageStatus.textContent = translationState === 'loading' ? '译文目录加载中…' : translationState === 'failed' ? '译文目录暂不可用' : '白话文待译';
+    }
     if (previous) previous.disabled = currentId === 'full' || volumeNumber(currentId) <= 1;
     if (next) next.disabled = currentId === 'full' || volumeNumber(currentId) >= 220;
+    for (const [button, delta, label] of [[previous, -1, '上一卷'], [next, 1, '下一卷']]) {
+      if (button) {
+        const target = String(volumeNumber(currentId) + delta).padStart(3, '0');
+        const description = `${label}${isVernacular(currentId) && !button.disabled && !translations.has(target) ? '（文言，白话文待译）' : ''}`;
+        button.setAttribute('aria-label', description);
+        button.title = description;
+      }
+    }
   }
 
   function resetFind() {
@@ -349,11 +397,6 @@
 
   function renderText(text) {
     const fragment = document.createDocumentFragment();
-    const options = document.createDocumentFragment();
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = '跳转到篇章 / 年代';
-    options.append(placeholder);
     blocks = [];
     headings = [];
     for (const raw of text.replace(/^\uFEFF/, '').split(isOriginal(currentId) ? /\r?\n/ : /\r?\n\s*\r?\n/)) {
@@ -365,20 +408,12 @@
       node.textContent = paragraph;
       if (isHeading) {
         node.id = `reader-section-${headings.length}`;
-        const option = document.createElement('option');
-        option.value = String(headings.length);
-        option.textContent = paragraph;
-        options.append(option);
         headings.push(node);
       }
       blocks.push({ node, text: paragraph, marked: false });
       fragment.append(node);
     }
     content.replaceChildren(fragment);
-    if (outline) {
-      outline.replaceChildren(options);
-      outline.disabled = headings.length === 0;
-    }
   }
 
   async function loadDocument(id) {
@@ -397,10 +432,6 @@
     content.replaceChildren();
     content.hidden = true;
     content.setAttribute('aria-busy', 'true');
-    if (outline) {
-      outline.replaceChildren();
-      outline.disabled = true;
-    }
     if (loading) {
       loading.hidden = false;
       loading.textContent = id === 'full' ? '正在加载全书文本，请稍候…' : `正在加载卷 ${id}…`;
@@ -410,6 +441,13 @@
     updateProgress();
     updateReaderLabels();
     try {
+      if (isVernacular(id)) {
+        await translationsReady;
+        if (translationState === 'failed') await loadTranslations();
+        if (token !== generation) return;
+        if (translationState !== 'ready') throw new Error('译文目录暂不可用，请重试或阅读文言原文');
+        if (!translations.has(volumeId(id))) throw new Error('本卷白话文待译，请切换到文言原文');
+      }
       if (isOriginal(id)) {
         await rawCatalogReady;
         if (!metadata.has(id)) await loadCatalog(true);
@@ -442,7 +480,7 @@
   }
 
   function routeId() {
-    const match = location.hash.match(/^#read\/(full|(?:raw\/)?\d{3})$/);
+    const match = location.hash.match(/^#read\/(full|(?:(?:raw|vernacular)\/)?\d{3})$/);
     return match && validId(match[1]) ? match[1] : null;
   }
 
@@ -514,17 +552,28 @@
   });
   const close = byId('reader-close');
   if (close) close.addEventListener('click', requestClose);
+  const catalogButton = byId('reader-catalog');
+  if (catalogButton) catalogButton.addEventListener('click', (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    closeReader();
+    history.replaceState(history.state ? { ...history.state, __xzztjReader: false } : null, '', '#volumes');
+    const catalog = byId('catalog-list');
+    byId('volumes').scrollIntoView({ block: 'start' });
+    if (catalog) catalog.focus({ preventScroll: true });
+  });
   const retry = byId('reader-retry');
   if (retry) retry.addEventListener('click', () => { if (currentId) loadDocument(currentId); });
   if (previous) previous.addEventListener('click', () => {
-    if (currentId !== 'full' && volumeNumber(currentId) > 1) navigate(`${isOriginal(currentId) ? 'raw/' : ''}${String(volumeNumber(currentId) - 1).padStart(3, '0')}`);
+    if (currentId !== 'full' && volumeNumber(currentId) > 1) navigate(adjacentVolume(-1));
   });
   if (next) next.addEventListener('click', () => {
-    if (currentId !== 'full' && volumeNumber(currentId) < 220) navigate(`${isOriginal(currentId) ? 'raw/' : ''}${String(volumeNumber(currentId) + 1).padStart(3, '0')}`);
+    if (currentId !== 'full' && volumeNumber(currentId) < 220) navigate(adjacentVolume(1));
   });
-  if (outline) outline.addEventListener('change', () => {
-    if (outline.value !== '' && headings[Number(outline.value)]) headings[Number(outline.value)].scrollIntoView({ block: 'start', behavior: 'auto' });
-  });
+  function adjacentVolume(delta) {
+    const id = String(volumeNumber(currentId) + delta).padStart(3, '0');
+    return `${isOriginal(currentId) ? 'raw/' : isVernacular(currentId) && translations.has(id) ? 'vernacular/' : ''}${id}`;
+  }
   if (decrease) decrease.addEventListener('click', () => changeFont(-1));
   if (increase) increase.addEventListener('click', () => changeFont(1));
   if (themeToggle) themeToggle.addEventListener('click', () => {

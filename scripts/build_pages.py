@@ -1,6 +1,7 @@
 """Prepare dependency-free reading pages and sitemap for build_catalog.py."""
 
 from html import escape
+import json
 from pathlib import Path
 import re
 
@@ -47,18 +48,22 @@ def reading_body(text, original=False):
     return "\n".join(body), "\n".join(outline)
 
 
-def pagination(volume_id, position, prefix='../'):
+def pagination(volume_id, position, prefix='../', translated=None):
     links = []
     if volume_id != "full":
         number = int(volume_id)
         if number > 1:
+            target = f'{number - 1:03d}'
+            pending = translated is not None and target not in translated
             links.append(
-                f'<a href="{number - 1:03d}.html" rel="prev">← 上一卷 {number - 1:03d}</a>'
+                f'<a href="{"../" if pending else ""}{target}.html" rel="prev">← 上一卷 {target}{"（文言，白话文待译）" if pending else ""}</a>'
             )
     links.append(f'<a href="{prefix}#volumes">返回分卷目录</a>')
     if volume_id != "full" and number < 220:
+        target = f'{number + 1:03d}'
+        pending = translated is not None and target not in translated
         links.append(
-            f'<a href="{number + 1:03d}.html" rel="next">下一卷 {number + 1:03d} →</a>'
+            f'<a href="{"../" if pending else ""}{target}.html" rel="next">下一卷 {target}{"（文言，白话文待译）" if pending else ""} →</a>'
         )
     return (
         f'<nav class="static-pagination" aria-label="{position}阅读导航">'
@@ -67,15 +72,19 @@ def pagination(volume_id, position, prefix='../'):
     )
 
 
-def reading_page(volume_id, text, item=None, original=False):
+def reading_page(volume_id, text, item=None, original=False, vernacular=False, translated=None):
     full = volume_id == "full"
-    prefix = '../../' if original else '../'
+    prefix = '../../' if original or vernacular else '../'
     book = '续资治通鉴' if original else BOOK
     authors = '清 · 毕沅 原著' if original else AUTHORS
     edition = '原版 220 卷' if original else ("110 卷新编本" if full else "新编版 · 220 卷")
+    if vernacular:
+        edition = '白话译文 · 220 卷分卷 · AI 辅助翻译，待人工校对'
     label = "全书重编本（110 卷）" if full else f"卷 {volume_id} · {item['title']}"
     title = f"{book} · {label} · {edition}"
     source = item['source'] if original else ("txt/新续资治通鉴.txt" if full else f"txt/volumes/{volume_id}.txt")
+    if vernacular:
+        source = f'txt/vernacular/{volume_id}.txt'
     warning = (
         "本页为季善凯重编的 110 卷全书，含序、凡例、正文及脚注；"
         "与按原书 220 卷卷界组织的分卷文本不一一对应。"
@@ -85,8 +94,11 @@ def reading_page(volume_id, text, item=None, original=False):
     )
     if original:
         warning = '本页为 txt/raw 所载毕沅《续资治通鉴》原版文本，保留来源用字及纪年，未经校订；可切换至同一原书卷界的新编分卷，非 110 卷新编全书的同号卷。'
+    if vernacular:
+        warning = '本页依据 txt/volumes 同卷文本逐段翻译，保留编号、纪年标题及专名；为 AI 辅助白话译文，尚待人工校对，不替代原文，不据其他史料改写来源疑误。'
     description = f"《{book}》{label}。{authors}。{warning}在线阅读完整正文，提供篇章目录和原始 TXT。"
-    canonical = f"{BASE_URL}read/{'raw/' if original else ''}{volume_id}.html"
+    document_prefix = 'raw/' if original else 'vernacular/' if vernacular else ''
+    canonical = f"{BASE_URL}read/{document_prefix}{volume_id}.html"
     body, outline = reading_body(text, original)
     switch = (f'../{volume_id}.html' if original else f'raw/{"001" if full else volume_id}.html')
     switch_label = '切换到新编版（同卷界）' if original else '切换到原版（同卷界）'
@@ -94,6 +106,15 @@ def reading_page(volume_id, text, item=None, original=False):
         f'<a class="edition-switch" href="{switch}" aria-label="{switch_label}" '
         f'title="{switch_label}"><span aria-hidden="true">⇄</span></a>'
     )
+    language_control = ''
+    if not full:
+        if vernacular:
+            switch_control = ''
+            language_control = f'<a class="icon-button language-switch" href="../{volume_id}.html" aria-label="切换到文言原文" title="切换到文言原文"><span aria-hidden="true">文⇄白</span></a>'
+        elif volume_id in (translated or set()):
+            language_control = f'<a class="icon-button language-switch" href="{"../" if original else ""}vernacular/{volume_id}.html" aria-label="切换到白话文（新编分卷译文）" title="切换到白话文（新编分卷译文）"><span aria-hidden="true">文⇄白</span></a>'
+        else:
+            language_control = '<span class="static-meta">白话文待译（新编分卷）</span>'
     period = (
         '<p class="static-meta">版本：110 卷重编全书 · 含序、凡例及脚注</p>'
         if full else
@@ -137,17 +158,18 @@ def reading_page(volume_id, text, item=None, original=False):
       <p class="static-meta">版本提示：{warning}</p>
     </header>
     <nav class="static-actions" aria-label="阅读方式">
-      <a href="{prefix}#read/{'raw/' if original else ''}{volume_id}">使用增强阅读器</a>
+      <a class="icon-button" href="{prefix}#volumes" aria-label="回到分卷目录" title="回到分卷目录"><span aria-hidden="true">☷</span></a>
+      <a href="{prefix}#read/{document_prefix}{volume_id}">使用增强阅读器</a>{chr(10) + '      ' + language_control if language_control else ''}
       <a href="{prefix}{escape(source)}" download>下载原始 TXT</a>
       <a href="{prefix}read/{'001.html' if full else 'full.html'}">{'阅读新编版分卷文本' if full else '阅读 110 卷新编全书'}</a>
     </nav>
     <div class="share-tools" data-share="page">
-      <button type="button" data-share-native hidden>分享…</button>
-      <button type="button" data-share-copy hidden>复制链接</button>
+      <button type="button" data-share-native aria-label="分享当前正文" title="分享当前正文" hidden><span aria-hidden="true">↥</span></button>
+      <button type="button" data-share-copy aria-label="复制当前正文链接" title="复制当前正文链接" hidden><span aria-hidden="true">⧉</span></button>
       <p class="share-status" role="status"></p>
       <input class="share-url" aria-label="可复制的分享链接" readonly hidden>
     </div>
-    {pagination(volume_id, '页首', prefix)}
+    {pagination(volume_id, '页首', prefix, translated if vernacular else None)}
     <details class="static-outline">
       <summary>篇章 / 年代目录</summary>
       <ol>
@@ -157,7 +179,7 @@ def reading_page(volume_id, text, item=None, original=False):
     <article class="static-body" aria-label="书籍正文">
 {body}
     </article>
-    {pagination(volume_id, '页末', prefix)}
+    {pagination(volume_id, '页末', prefix, translated if vernacular else None)}
   </main>
 </body>
 </html>
@@ -197,20 +219,40 @@ def homepage_catalog(index_html, rows):
 
 def build_site(rows, texts, raw_rows, raw_texts):
     """Prepare every output before the entrypoint writes any generated files."""
+    translations = {}
+    for source in sorted((ROOT / 'txt' / 'vernacular').glob('*.txt')):
+        volume_id = source.stem
+        if volume_id not in texts or volume_id == 'full':
+            raise ValueError(f'{source}: expected a volume ID from 001 through 220')
+        text = source.read_text(encoding='utf-8')
+        # Reject missing/extra/reordered paragraphs and altered chronology headings.
+        # This is a structural guard, not a substitute for editorial review.
+        def structure(value):
+            return re.findall(r'^\s*(\d+)\.', value, re.MULTILINE), re.findall(r'^[○◎].*$', value, re.MULTILINE)
+        if not text.strip() or structure(text) != structure(texts[volume_id]):
+            raise ValueError(f'{source}: paragraph numbering or chronology headings differ from source')
+        translations[volume_id] = text
+    translated = set(translations)
     with (ROOT / "index.html").open(encoding="utf-8", newline="") as source:
         index_html = source.read()
     outputs = {ROOT / "index.html": homepage_catalog(index_html, rows)}
+    outputs[ROOT / 'assets' / 'vernacular.json'] = json.dumps(sorted(translated), ensure_ascii=False, indent=2) + '\n'
     for item in rows:
         volume_id = item["id"]
         outputs[ROOT / "read" / f"{volume_id}.html"] = reading_page(
-            volume_id, texts[volume_id], item
+            volume_id, texts[volume_id], item, translated=translated
         )
+        if volume_id in translated:
+            outputs[ROOT / 'read' / 'vernacular' / f'{volume_id}.html'] = reading_page(
+                volume_id, translations[volume_id], item, vernacular=True, translated=translated
+            )
     outputs[ROOT / "read" / "full.html"] = reading_page("full", texts["full"])
     for item in raw_rows:
         volume_id = item['id']
-        outputs[ROOT / 'read' / 'raw' / f'{volume_id}.html'] = reading_page(volume_id, raw_texts[volume_id], item, original=True)
+        outputs[ROOT / 'read' / 'raw' / f'{volume_id}.html'] = reading_page(volume_id, raw_texts[volume_id], item, original=True, translated=translated)
     paths = [""] + [f'read/{item["id"]}.html' for item in rows] + ["read/full.html"]
     paths += [f'read/raw/{item["id"]}.html' for item in raw_rows]
+    paths += [f'read/vernacular/{volume_id}.html' for volume_id in sorted(translated)]
     urls = "\n".join(f"  <url><loc>{escape(BASE_URL + path)}</loc></url>" for path in paths)
     outputs[ROOT / "sitemap.xml"] = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'

@@ -77,10 +77,14 @@
       }
     });
 
-    nativeButton.hidden = typeof navigator.share !== 'function';
+    nativeButton.hidden = false;
     nativeButton.addEventListener('click', async () => {
       reset();
       const details = shareDetails(block);
+      if (typeof navigator.share !== 'function') {
+        offerURL(details.url, '复制此链接即可分享。');
+        return;
+      }
       try {
         await navigator.share(details);
         status.textContent = '已交给系统分享。';
