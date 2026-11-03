@@ -113,6 +113,12 @@ nav a[aria-current="page"]::after { content: ""; position: absolute; height: 3px
 #reader[open] { display: flex; flex-direction: column; }
 #reader::backdrop { background: #202124e0; }
 #reader[data-theme="dark"] { --reader-bg: #1c1f24; --reader-ink: #e1e4e8; --reader-muted: #abb2bc; --reader-line: #3b4149; --reader-ui: #252a31; color-scheme: dark; }
+/* Controls overlay the article so revealing them never shifts the reading position. */
+.reader-chrome { position: absolute; inset-inline: 0; z-index: 1; overflow-y: auto; overscroll-behavior: contain; background: var(--reader-bg); transition: opacity .18s ease; }
+.reader-chrome-top { top: 0; max-height: 55%; padding-top: env(safe-area-inset-top); box-shadow: 0 4px 18px #00000010; }
+.reader-chrome-bottom { bottom: 0; max-height: 40%; box-shadow: 0 -4px 18px #00000010; }
+#reader.controls-hidden .reader-chrome { opacity: 0; visibility: hidden; pointer-events: none; }
+#reader-loading, #reader-error { margin: auto; }
 .reader-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px max(24px, calc((100vw - 1200px) / 2)); border-bottom: 1px solid var(--reader-line); flex-shrink: 0; }
 .reader-header > div { min-width: 0; }
 .reader-header .eyebrow { color: var(--reader-muted); font-size: 10px; }

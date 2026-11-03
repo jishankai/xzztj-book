@@ -94,6 +94,9 @@
   let restoring = false;
   let returnFocus = null;
   let returnHash = '';
+  let controlsTimer = null;
+  let contentPointer = null;
+  const chrome = reader ? [...reader.querySelectorAll('.reader-chrome')] : [];
   const canRead = reader && content && typeof reader.showModal === 'function';
 
   function storageFailed() {
@@ -219,6 +222,25 @@
 
   if (!canRead) return;
 
+  function controlsFocused() {
+    return chrome.some((panel) => panel.contains(document.activeElement));
+  }
+
+  function hideControls() {
+    clearTimeout(controlsTimer);
+    if (!reader.open || !loadedId || controlsFocused()) return;
+    reader.classList.add('controls-hidden');
+    for (const panel of chrome) panel.inert = true;
+  }
+
+  function showControls() {
+    clearTimeout(controlsTimer);
+    if (!reader.open) return;
+    reader.classList.remove('controls-hidden');
+    for (const panel of chrome) panel.inert = false;
+    controlsTimer = setTimeout(hideControls, 3000);
+  }
+
   function updateReaderLabels() {
     const item = metadata.get(currentId);
     if (title) title.textContent = documentName(currentId);
@@ -337,6 +359,7 @@
     currentId = id;
     loadedId = null;
     restoring = false;
+    showControls();
     blocks = [];
     headings = [];
     resetFind();
@@ -369,6 +392,7 @@
       if (find) find.disabled = false;
       restorePosition(resume, token);
       if (document.activeElement === reader || document.activeElement === byId('reader-close')) content.focus({ preventScroll: true });
+      hideControls();
     } catch (error) {
       if (token !== generation || error.name === 'AbortError') return;
       content.setAttribute('aria-busy', 'false');
@@ -388,6 +412,7 @@
     ++generation;
     if (controller) controller.abort();
     clearTimeout(findTimer);
+    clearTimeout(controlsTimer);
     currentId = null;
     loadedId = null;
     restoring = false;
@@ -489,6 +514,35 @@
   }
   if (findPrevious) findPrevious.addEventListener('click', () => selectMatch(matchIndex - 1));
   if (findNext) findNext.addEventListener('click', () => selectMatch(matchIndex + 1));
+  content.addEventListener('pointerdown', (event) => {
+    contentPointer = { x: event.clientX, y: event.clientY, moved: false };
+  }, { passive: true });
+  content.addEventListener('pointermove', (event) => {
+    if (contentPointer && Math.hypot(event.clientX - contentPointer.x, event.clientY - contentPointer.y) > 10) contentPointer.moved = true;
+  }, { passive: true });
+  content.addEventListener('pointercancel', () => {
+    if (contentPointer) contentPointer.moved = true;
+  }, { passive: true });
+  content.addEventListener('click', (event) => {
+    const moved = contentPointer && contentPointer.moved;
+    contentPointer = null;
+    if (moved || event.button !== 0) return;
+    const bounds = content.getBoundingClientRect();
+    const x = (event.clientX - bounds.left) / bounds.width;
+    const y = (event.clientY - bounds.top) / bounds.height;
+    if (x < 1 / 3 || x > 2 / 3 || y < 1 / 3 || y > 2 / 3) return;
+    content.focus({ preventScroll: true });
+    showControls();
+  });
+  reader.addEventListener('keydown', (event) => {
+    if (event.key === 'Tab') showControls();
+  });
+  for (const panel of chrome) {
+    panel.addEventListener('pointerdown', showControls);
+    panel.addEventListener('focusin', showControls);
+    panel.addEventListener('focusout', showControls);
+    panel.addEventListener('input', showControls);
+  }
   content.addEventListener('scroll', () => {
     if (!scrollFrame) scrollFrame = requestAnimationFrame(() => {
       scrollFrame = null;
