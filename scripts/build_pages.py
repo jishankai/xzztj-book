@@ -26,17 +26,17 @@ CATALOG = re.compile(
 )
 
 
-def reading_body(text):
+def reading_body(text, original=False):
     """Return the same text blocks and heading anchors as the enhanced reader."""
     if text.startswith("\ufeff"):
         text = text[1:]
     body = []
     outline = []
-    for raw in PARAGRAPH_BREAK.split(text):
+    for raw in (text.splitlines() if original else PARAGRAPH_BREAK.split(text)):
         paragraph = raw.strip(JS_WHITESPACE)
         if not paragraph:
             continue
-        if "\n" not in paragraph and HEADING.search(paragraph):
+        if "\n" not in paragraph and (HEADING.search(paragraph) or original and re.match(r'^(?:续资治通鉴|●卷|【)', paragraph)):
             anchor = f"reader-section-{len(outline)}"
             body.append(
                 f'<h3 class="reader-heading" id="{anchor}">{escape(paragraph)}</h3>'
@@ -47,7 +47,7 @@ def reading_body(text):
     return "\n".join(body), "\n".join(outline)
 
 
-def pagination(volume_id, position):
+def pagination(volume_id, position, prefix='../'):
     links = []
     if volume_id != "full":
         number = int(volume_id)
@@ -55,7 +55,7 @@ def pagination(volume_id, position):
             links.append(
                 f'<a href="{number - 1:03d}.html" rel="prev">← 上一卷 {number - 1:03d}</a>'
             )
-    links.append('<a href="../#volumes">返回分卷目录</a>')
+    links.append(f'<a href="{prefix}#volumes">返回分卷目录</a>')
     if volume_id != "full" and number < 220:
         links.append(
             f'<a href="{number + 1:03d}.html" rel="next">下一卷 {number + 1:03d} →</a>'
@@ -67,12 +67,15 @@ def pagination(volume_id, position):
     )
 
 
-def reading_page(volume_id, text, item=None):
+def reading_page(volume_id, text, item=None, original=False):
     full = volume_id == "full"
-    edition = "110 卷重编本" if full else "原书 220 卷卷界分卷文本"
+    prefix = '../../' if original else '../'
+    book = '续资治通鉴' if original else BOOK
+    authors = '清 · 毕沅 原著' if original else AUTHORS
+    edition = '原版 220 卷' if original else ("110 卷新编本" if full else "新编版 · 220 卷")
     label = "全书重编本（110 卷）" if full else f"卷 {volume_id} · {item['title']}"
-    title = f"{BOOK} · {label} · {edition}"
-    source = "txt/新续资治通鉴.txt" if full else f"txt/volumes/{volume_id}.txt"
+    title = f"{book} · {label} · {edition}"
+    source = item['source'] if original else ("txt/新续资治通鉴.txt" if full else f"txt/volumes/{volume_id}.txt")
     warning = (
         "本页为季善凯重编的 110 卷全书，含序、凡例、正文及脚注；"
         "与按原书 220 卷卷界组织的分卷文本不一一对应。"
@@ -80,13 +83,21 @@ def reading_page(volume_id, text, item=None):
         "本页按原书 220 卷卷界组织，并非重编本的同号卷；"
         "与季善凯重编的 110 卷全书不一一对应。"
     )
-    description = f"《{BOOK}》{label}。{AUTHORS}。{warning}在线阅读完整正文，提供篇章目录和原始 TXT。"
-    canonical = f"{BASE_URL}read/{volume_id}.html"
-    body, outline = reading_body(text)
+    if original:
+        warning = '本页为 txt/raw 所载毕沅《续资治通鉴》原版文本，保留来源用字及纪年，未经校订；可切换至同一原书卷界的新编分卷，非 110 卷新编全书的同号卷。'
+    description = f"《{book}》{label}。{authors}。{warning}在线阅读完整正文，提供篇章目录和原始 TXT。"
+    canonical = f"{BASE_URL}read/{'raw/' if original else ''}{volume_id}.html"
+    body, outline = reading_body(text, original)
+    switch = (f'../{volume_id}.html' if original else f'raw/{"001" if full else volume_id}.html')
+    switch_label = '切换到新编版（同卷界）' if original else '切换到原版（同卷界）'
+    switch_control = '' if full else (
+        f'<a class="edition-switch" href="{switch}" aria-label="{switch_label}" '
+        f'title="{switch_label}"><span aria-hidden="true">⇄</span></a>'
+    )
     period = (
         '<p class="static-meta">版本：110 卷重编全书 · 含序、凡例及脚注</p>'
         if full else
-        f'<p class="static-meta">版本：原书 220 卷卷界 · {escape(item["period"])}</p>'
+        f'<p class="static-meta">版本：{edition} · {escape(item["period"])}</p>'
     )
     return f'''<!doctype html>
 <html lang="zh-CN">
@@ -113,22 +124,22 @@ def reading_page(volume_id, text, item=None):
   <meta name="twitter:description" content="{escape(description)}">
   <meta name="twitter:image" content="{SHARE_IMAGE}">
   <meta name="twitter:image:alt" content="{escape(SHARE_IMAGE_ALT)}">
-  <link rel="stylesheet" href="../assets/style.css">
-  <script src="../assets/share.js" defer></script>
+  <link rel="stylesheet" href="{prefix}assets/style.css">
+  <script src="{prefix}assets/share.js" defer></script>
 </head>
 <body class="static-reading">
   <main class="static-main">
     <header class="static-title">
-      <p class="eyebrow"><a href="../">{BOOK}</a> / 静态全文阅读</p>
-      <h1>{escape(label)}</h1>
-      <p class="static-meta">{AUTHORS}</p>
+      <p class="eyebrow"><a href="{prefix}">{book}</a> / 静态全文阅读</p>
+      <div class="static-heading"><h1>{escape(label)}</h1>{switch_control}</div>
+      <p class="static-meta">{authors}</p>
       {period}
       <p class="static-meta">版本提示：{warning}</p>
     </header>
     <nav class="static-actions" aria-label="阅读方式">
-      <a href="../#read/{volume_id}">使用增强阅读器</a>
-      <a href="../{source}" download>下载原始 TXT</a>
-      <a href="{'001.html' if full else 'full.html'}">{'阅读原书卷界分卷文本' if full else '阅读 110 卷重编全书'}</a>
+      <a href="{prefix}#read/{'raw/' if original else ''}{volume_id}">使用增强阅读器</a>
+      <a href="{prefix}{escape(source)}" download>下载原始 TXT</a>
+      <a href="{prefix}read/{'001.html' if full else 'full.html'}">{'阅读新编版分卷文本' if full else '阅读 110 卷新编全书'}</a>
     </nav>
     <div class="share-tools" data-share="page">
       <button type="button" data-share-native hidden>分享…</button>
@@ -136,7 +147,7 @@ def reading_page(volume_id, text, item=None):
       <p class="share-status" role="status"></p>
       <input class="share-url" aria-label="可复制的分享链接" readonly hidden>
     </div>
-    {pagination(volume_id, '页首')}
+    {pagination(volume_id, '页首', prefix)}
     <details class="static-outline">
       <summary>篇章 / 年代目录</summary>
       <ol>
@@ -146,7 +157,7 @@ def reading_page(volume_id, text, item=None):
     <article class="static-body" aria-label="书籍正文">
 {body}
     </article>
-    {pagination(volume_id, '页末')}
+    {pagination(volume_id, '页末', prefix)}
   </main>
 </body>
 </html>
@@ -184,7 +195,7 @@ def homepage_catalog(index_html, rows):
     )
 
 
-def build_site(rows, texts):
+def build_site(rows, texts, raw_rows, raw_texts):
     """Prepare every output before the entrypoint writes any generated files."""
     with (ROOT / "index.html").open(encoding="utf-8", newline="") as source:
         index_html = source.read()
@@ -195,7 +206,11 @@ def build_site(rows, texts):
             volume_id, texts[volume_id], item
         )
     outputs[ROOT / "read" / "full.html"] = reading_page("full", texts["full"])
+    for item in raw_rows:
+        volume_id = item['id']
+        outputs[ROOT / 'read' / 'raw' / f'{volume_id}.html'] = reading_page(volume_id, raw_texts[volume_id], item, original=True)
     paths = [""] + [f'read/{item["id"]}.html' for item in rows] + ["read/full.html"]
+    paths += [f'read/raw/{item["id"]}.html' for item in raw_rows]
     urls = "\n".join(f"  <url><loc>{escape(BASE_URL + path)}</loc></url>" for path in paths)
     outputs[ROOT / "sitemap.xml"] = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'

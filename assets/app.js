@@ -13,10 +13,13 @@
   let metadataState = 'loading';
   let range = 'all';
 
-  const validId = (id) => id === 'full' || /^\d{3}$/.test(id) && Number(id) >= 1 && Number(id) <= 220;
-  const sourceFor = (id) => id === 'full' ? 'txt/新续资治通鉴.txt' : `txt/volumes/${id}.txt`;
+  const isOriginal = (id) => typeof id === 'string' && id.startsWith('raw/');
+  const volumeNumber = (id) => Number(isOriginal(id) ? id.slice(4) : id);
+  const validId = (id) => id === 'full' || /^(?:raw\/)?\d{3}$/.test(id) && volumeNumber(id) >= 1 && volumeNumber(id) <= 220;
+  const sourceFor = (id) => isOriginal(id) ? metadata.get(id)?.source : id === 'full' ? 'txt/新续资治通鉴.txt' : `txt/volumes/${id}.txt`;
   const staticPageFor = (id) => `read/${id}.html`;
-  const documentName = (id) => id === 'full' ? '全书重编本' : `卷 ${id}`;
+  const documentName = (id) => id === 'full' ? '新编版 · 全书重编本' : `${isOriginal(id) ? '原版' : '新编版'} · 卷 ${isOriginal(id) ? id.slice(4) : id}`;
+  const otherEdition = (id) => isOriginal(id) ? id.slice(4) : `raw/${id === 'full' ? '001' : id}`;
 
   function filterCatalog() {
     const query = search ? search.value.trim().toLocaleLowerCase() : '';
@@ -63,6 +66,7 @@
   const errorMessage = byId('reader-error-message');
   const source = byId('reader-source');
   const permalink = byId('reader-permalink');
+  const editionSwitch = byId('reader-edition-switch');
   const outline = byId('reader-outline');
   const progress = byId('reader-progress');
   const percent = byId('reader-percent');
@@ -78,7 +82,7 @@
   const continueLink = byId('continue-reading');
   const storageNote = byId('storage-note');
   const storageKey = 'xzztj-reader-v1';
-  let saved = { id: null, fraction: 0, fontSize: 20, theme: 'paper' };
+  let saved = { id: null, fraction: 0, fontSize: 20, theme: 'paper', positions: {} };
   let storageAvailable = true;
   let currentId = null;
   let loadedId = null;
@@ -114,6 +118,11 @@
       if (Number.isFinite(value.fraction)) saved.fraction = Math.max(0, Math.min(1, value.fraction));
       if (Number.isFinite(value.fontSize)) saved.fontSize = Math.max(16, Math.min(28, Math.round(value.fontSize)));
       if (value.theme === 'dark') saved.theme = 'dark';
+      if (value.positions && typeof value.positions === 'object') {
+        for (const [id, position] of Object.entries(value.positions)) {
+          if (validId(id) && Number.isFinite(position)) saved.positions[id] = Math.max(0, Math.min(1, position));
+        }
+      }
     }
   } catch (error) {
     storageFailed();
@@ -149,6 +158,7 @@
     if (!loadedId || restoring) return;
     saved.id = loadedId;
     saved.fraction = fraction();
+    saved.positions[loadedId] = saved.fraction;
     persist();
   }
 
@@ -192,16 +202,23 @@
   updateContinue();
   applyPreferences();
 
-  async function loadCatalog() {
+  async function loadCatalog(original = false) {
     try {
-      const response = await fetch('assets/catalog.json');
+      const response = await fetch(original ? 'assets/catalog-raw.json' : 'assets/catalog.json');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       if (!Array.isArray(data)) throw new Error('目录格式错误');
       for (const item of data) {
-        if (item && validId(item.id) && item.id !== 'full' && typeof item.title === 'string' && typeof item.period === 'string' && typeof item.heading === 'string') metadata.set(item.id, item);
+        if (item && /^\d{3}$/.test(item.id) && validId(item.id) && typeof item.title === 'string' && typeof item.period === 'string' && typeof item.heading === 'string') {
+          if (!original || typeof item.source === 'string' && /^txt\/raw\/\d{3}_[^/]+\.txt$/.test(item.source)) metadata.set(original ? `raw/${item.id}` : item.id, item);
+        }
       }
-      metadataState = metadata.size === cards.length && cards.length > 0 ? 'ready' : 'failed';
+      if (original) {
+        updateContinue();
+        if (currentId) updateReaderLabels();
+        return;
+      }
+      metadataState = cards.length > 0 && cards.every((card) => metadata.has(card.dataset.volume)) ? 'ready' : 'failed';
       for (const card of cards) {
         const item = metadata.get(card.dataset.volume);
         if (!item) continue;
@@ -212,6 +229,7 @@
         card.title = item.heading;
       }
     } catch (error) {
+      if (original) return;
       metadataState = 'failed';
     }
     filterCatalog();
@@ -219,6 +237,7 @@
     if (currentId) updateReaderLabels();
   }
   loadCatalog();
+  const rawCatalogReady = loadCatalog(true);
 
   if (!canRead) return;
 
@@ -245,12 +264,24 @@
     const item = metadata.get(currentId);
     if (title) title.textContent = documentName(currentId);
     if (subtitle) subtitle.textContent = currentId === 'full'
-      ? '110 卷重编本 · 全书连续阅读，与 220 卷分卷文本的卷界不同'
-      : `220 卷分卷文本 · ${item ? `${item.title} · ${item.period}` : '原分卷边界'}`;
-    if (source) source.href = sourceFor(currentId);
+      ? '110 卷新编本 · 全书连续阅读，与原版 220 卷的卷号不一一对应'
+      : `${isOriginal(currentId) ? '毕沅原版' : '季善凯新编版'} · ${item ? `${item.title} · ${item.period}` : '220 卷'}`;
+    if (source) {
+      const url = sourceFor(currentId);
+      source.hidden = !url;
+      if (url) source.href = url;
+    }
     if (permalink) permalink.href = staticPageFor(currentId);
-    if (previous) previous.disabled = currentId === 'full' || Number(currentId) <= 1;
-    if (next) next.disabled = currentId === 'full' || Number(currentId) >= 220;
+    if (editionSwitch) {
+      editionSwitch.hidden = currentId === 'full';
+      editionSwitch.dataset.read = otherEdition(currentId);
+      editionSwitch.href = staticPageFor(otherEdition(currentId));
+      const label = isOriginal(currentId) ? '切换到新编版（同卷界）' : '切换到原版（同卷界）';
+      editionSwitch.setAttribute('aria-label', label);
+      editionSwitch.title = label;
+    }
+    if (previous) previous.disabled = currentId === 'full' || volumeNumber(currentId) <= 1;
+    if (next) next.disabled = currentId === 'full' || volumeNumber(currentId) >= 220;
   }
 
   function resetFind() {
@@ -325,10 +356,10 @@
     options.append(placeholder);
     blocks = [];
     headings = [];
-    for (const raw of text.replace(/^\uFEFF/, '').split(/\r?\n\s*\r?\n/)) {
+    for (const raw of text.replace(/^\uFEFF/, '').split(isOriginal(currentId) ? /\r?\n/ : /\r?\n\s*\r?\n/)) {
       const paragraph = raw.trim();
       if (!paragraph) continue;
-      const isHeading = !paragraph.includes('\n') && (/^[○◎]/.test(paragraph) || /^新续资治通鉴(?:\s|$)/.test(paragraph) || /^(?:序|凡例|目录)$/.test(paragraph) || /^(?:宋|辽|金|元)纪.{0,40}$/.test(paragraph));
+      const isHeading = !paragraph.includes('\n') && (/^[○◎]/.test(paragraph) || /^新续资治通鉴(?:\s|$)/.test(paragraph) || /^(?:序|凡例|目录)$/.test(paragraph) || /^(?:宋|辽|金|元)纪.{0,40}$/.test(paragraph) || isOriginal(currentId) && /^(?:续资治通鉴|●卷|【)/.test(paragraph));
       const node = document.createElement(isHeading ? 'h3' : 'p');
       node.className = isHeading ? 'reader-heading' : 'reader-paragraph';
       node.textContent = paragraph;
@@ -355,7 +386,7 @@
     if (controller) controller.abort();
     controller = new AbortController();
     const token = ++generation;
-    const resume = saved.id === id ? saved.fraction : 0;
+    const resume = saved.positions[id] ?? (saved.id === id ? saved.fraction : 0);
     currentId = id;
     loadedId = null;
     restoring = false;
@@ -379,7 +410,15 @@
     updateProgress();
     updateReaderLabels();
     try {
-      const response = await fetch(sourceFor(id), { signal: controller.signal });
+      if (isOriginal(id)) {
+        await rawCatalogReady;
+        if (!metadata.has(id)) await loadCatalog(true);
+      }
+      if (token !== generation) return;
+      updateReaderLabels();
+      const url = sourceFor(id);
+      if (!url) throw new Error('原版目录暂不可用，请刷新页面重试，或打开独立阅读页');
+      const response = await fetch(url, { signal: controller.signal });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const text = await response.text();
       if (token !== generation) return;
@@ -403,7 +442,7 @@
   }
 
   function routeId() {
-    const match = location.hash.match(/^#read\/(full|\d{3})$/);
+    const match = location.hash.match(/^#read\/(full|(?:raw\/)?\d{3})$/);
     return match && validId(match[1]) ? match[1] : null;
   }
 
@@ -478,10 +517,10 @@
   const retry = byId('reader-retry');
   if (retry) retry.addEventListener('click', () => { if (currentId) loadDocument(currentId); });
   if (previous) previous.addEventListener('click', () => {
-    if (currentId !== 'full' && Number(currentId) > 1) navigate(String(Number(currentId) - 1).padStart(3, '0'));
+    if (currentId !== 'full' && volumeNumber(currentId) > 1) navigate(`${isOriginal(currentId) ? 'raw/' : ''}${String(volumeNumber(currentId) - 1).padStart(3, '0')}`);
   });
   if (next) next.addEventListener('click', () => {
-    if (currentId !== 'full' && Number(currentId) < 220) navigate(String(Number(currentId) + 1).padStart(3, '0'));
+    if (currentId !== 'full' && volumeNumber(currentId) < 220) navigate(`${isOriginal(currentId) ? 'raw/' : ''}${String(volumeNumber(currentId) + 1).padStart(3, '0')}`);
   });
   if (outline) outline.addEventListener('change', () => {
     if (outline.value !== '' && headings[Number(outline.value)]) headings[Number(outline.value)].scrollIntoView({ block: 'start', behavior: 'auto' });

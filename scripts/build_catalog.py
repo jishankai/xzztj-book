@@ -86,7 +86,21 @@ def main():
         texts[volume_id] = text
     rows = [metadata(volume_id, sources[volume_id], texts[volume_id])
             for volume_id in expected]
-    outputs = build_site(rows, texts)
+    raw_sources = sorted((ROOT / 'txt' / 'raw').glob('[0-9][0-9][0-9]_*.txt'))
+    if len(raw_sources) != 220 or [p.name[:3] for p in raw_sources] != expected:
+        raise ValueError('txt/raw: expected exactly 220 files numbered 001 through 220')
+    raw_texts = {}
+    raw_rows = []
+    for volume_id, source in zip(expected, raw_sources):
+        text = source.read_text(encoding='utf-8')
+        if not text.strip():
+            raise ValueError(f'{source}: empty source text')
+        raw_texts[volume_id] = text
+        item = metadata(volume_id, source, text)
+        item['source'] = source.relative_to(ROOT).as_posix()
+        raw_rows.append(item)
+    outputs = build_site(rows, texts, raw_rows, raw_texts)
+    outputs[ROOT / 'assets' / 'catalog-raw.json'] = json.dumps(raw_rows, ensure_ascii=False, indent=2) + '\n'
     destination = ROOT / "assets" / "catalog.json"
     outputs[destination] = json.dumps(rows, ensure_ascii=False, indent=2) + "\n"
     for path, content in outputs.items():
@@ -94,7 +108,7 @@ def main():
         with path.open("w", encoding="utf-8", newline="") as stream:
             stream.write(content)
     print(f"Wrote {len(rows)} volumes to {destination}")
-    print("Wrote 221 static reading pages, homepage catalog, and sitemap (222 URLs)")
+    print("Wrote 441 static reading pages, homepage catalog, and sitemap (442 URLs)")
     for index in (0, 109, 186, 219):
         print(json.dumps(rows[index], ensure_ascii=False))
 
